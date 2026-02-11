@@ -1,0 +1,98 @@
+# config/production.yaml
+# Production-level configuration for comprehensive evaluation
+
+# LLM Configuration
+llm:
+  provider: "groq"
+  model: "llama-3.3-70b-versatile"
+  api_key_env: "GROQ_API_KEY"
+  temperature: 0.7  # Some creativity but not too random
+  max_tokens: 2000
+  timeout: 30
+
+# Agent Configuration
+agents:
+  red_agent:
+    attack_types:
+      - sql_injection
+      - xss
+      - command_injection
+      - path_traversal
+      - xxe
+      - ssrf
+    max_payload_length: 1000
+    mutation_rate: 0.3
+    diversity_bonus: 5.0
+    
+  blue_agent:
+    patch_strategies:
+      - input_validation
+      - parameterization
+      - sanitization
+      - safe_api_replacement
+    max_patch_lines: 50
+    test_required: true
+
+# Reinforcement Learning
+rl:
+  algorithm: "PPO"
+  learning_rate: 0.0003
+  gamma: 0.99
+  clip_epsilon: 0.2
+  value_loss_coef: 0.5
+  entropy_coef: 0.01
+
+# Sandbox Configuration
+sandbox:
+  backend: "docker"
+  timeout: 10
+  memory_limit: "512m"
+  cpu_limit: 1.0
+  network_disabled: true
+
+# Dataset Configuration - Balanced Distribution
+dataset:
+  synthetic:
+    num_samples: 3000  # Larger dataset for comprehensive testing
+    vulnerability_distribution:
+      sql_injection: 0.17   # ~16.7% each (balanced)
+      xss: 0.17
+      command_injection: 0.17
+      path_traversal: 0.17
+      xxe: 0.16
+      ssrf: 0.16
+    languages:
+      - python
+    complexity_levels:
+      - low      # 33%
+      - medium   # 33%
+      - high     # 33%
+
+# Training Configuration - Production Settings
+training:
+  max_rounds: 200  # Enough for meaningful learning, manageable for API limits
+  checkpoint_interval: 20
+  early_stopping_threshold: 0.80  # Stop if Blue blocks 80% attacks
+  curriculum_learning: false  # DISABLED - test all types equally
+  
+# Logging Configuration
+logging:
+  level: "INFO"
+  progress_interval: 10  # Log every 10 rounds
+  save_attack_details: true
+  save_patch_details: true
+
+# Evaluation Metrics
+evaluation:
+  target_metrics:
+    red_win_rate: [0.30, 0.60]  # Red should succeed 30-60%
+    blue_win_rate: [0.30, 0.60]  # Blue should block 30-60%
+    avg_red_reward: [5.0, 15.0]
+    avg_blue_reward: [5.0, 15.0]
+  
+  success_criteria:
+    # Project is successful if:
+    min_red_success_rate: 0.20  # Red finds at least 20% of vulnerabilities
+    min_blue_block_rate: 0.20   # Blue blocks at least 20% of attacks
+    competitive_balance: 0.15   # Win rates within 15% of each other
+    learning_progression: true  # Both agents improve over time

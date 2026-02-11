@@ -1,0 +1,85 @@
+# config/base_config.yaml
+# Base configuration for Sentinel-Adversarial system
+
+# LLM Configuration (Switched to Groq for Speed)
+llm:
+  provider: "groq"
+  model: "llama-3.3-70b-versatile"
+  api_key_env: "GROQ_API_KEY"
+  temperature: 0.7
+  max_tokens: 2000
+  timeout: 30
+
+# Agent Configuration
+agents:
+  red_agent:
+    attack_types:
+      - sql_injection
+      - xss
+      - command_injection
+      - path_traversal
+      - xxe
+      - ssrf
+    max_payload_length: 1000
+    mutation_rate: 0.3
+    diversity_bonus: 5.0
+    
+  blue_agent:
+    patch_strategies:
+      - input_validation
+      - parameterization
+      - sanitization
+      - safe_api_replacement
+    max_patch_lines: 50
+    test_required: true
+
+# Reinforcement Learning
+rl:
+  algorithm: "PPO"
+  learning_rate: 0.0003
+  gamma: 0.99
+  clip_epsilon: 0.2
+  value_loss_coef: 0.5
+  entropy_coef: 0.01
+
+# Sandbox Configuration
+sandbox:
+  backend: "docker"
+  timeout: 10
+  memory_limit: "512m"
+  cpu_limit: 1.0
+  network_disabled: true
+
+# Dataset Configuration
+dataset:
+  synthetic:
+    num_samples: 100
+    vulnerability_distribution:
+      sql_injection: 0.25
+      xss: 0.20
+      command_injection: 0.20
+      path_traversal: 0.15
+      xxe: 0.10
+      ssrf: 0.10
+    languages:
+      - python
+    complexity_levels:
+      - low
+      - medium
+
+# Training Configuration
+training:
+  max_rounds: 1000
+  checkpoint_interval: 50
+  early_stopping_threshold: 0.95
+  curriculum_learning: true
+  curriculum:
+    - vulnerability_complexity: "low"
+      rounds: 100
+    - vulnerability_complexity: "medium"
+      rounds: 200
+    - vulnerability_complexity: "high"
+      rounds: 300
+    - vulnerability_complexity: "mixed"
+      rounds: 400
+

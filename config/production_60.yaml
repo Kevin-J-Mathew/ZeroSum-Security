@@ -1,0 +1,76 @@
+# Production Configuration - 60 Rounds (Single API Key)
+# Safe for Groq free tier (100k tokens/day limit)
+# Provides statistically significant results for viability assessment
+
+model:
+  provider: "groq"
+  name: "llama-3.3-70b-versatile"
+  temperature: 0.85
+  max_tokens: 1500
+  timeout: 45
+
+training:
+  max_rounds: 60  # Safe limit for single free API key
+  checkpoint_frequency: 20
+  save_final_checkpoint: true
+  
+  reward:
+    red_attack_success: 5.0
+    blue_block_success: 8.0
+    discovery_bonus: 13.0
+    defense_bonus: 15.0
+    red_fail_penalty: 0.0
+    blue_fail_penalty: -2.0
+    blue_patch_invalid_penalty: -5.0
+  
+  exploration:
+    red_epsilon: 0.2
+    blue_epsilon: 0.15
+    epsilon_decay: 0.995
+    min_epsilon: 0.05
+
+dataset:
+  source: "synthetic"
+  num_samples: 3000  # Large dataset for diversity
+  distribution:
+    sql_injection: 0.17
+    xss: 0.17
+    command_injection: 0.17
+    path_traversal: 0.17
+    xxe: 0.16
+    ssrf: 0.16
+  complexity_distribution:
+    low: 0.33
+    medium: 0.34
+    high: 0.33
+  curriculum_learning: false  # CRITICAL: Test all vulnerability types equally
+
+sandbox:
+  timeout: 15
+  memory_limit: "256m"
+  cpu_limit: 1.0
+  network_enabled: false
+
+logging:
+  level: "INFO"
+  save_rounds: true
+  log_file: "logs/production_60_training.log"
+
+evaluation:
+  # Success criteria adjusted for 60 rounds
+  target_metrics:
+    red_win_rate: [0.30, 0.60]  # 18-36 successful attacks out of 60
+    blue_win_rate: [0.30, 0.60]  # Block 30-60% of Red's successful attacks
+    competitive_balance: 0.15    # Max 15% difference between win rates
+  
+  minimum_thresholds:
+    red_wins: 12  # At least 20% (12/60)
+    blue_blocks: 5  # At least 20% of Red wins blocked
+    vulnerability_coverage: 6  # All 6 types must be tested
+    min_samples_per_type: 8  # Each type needs ~10 samples (60/6 ≈ 10)
+
+  good_performance:
+    red_win_rate: [0.40, 0.60]  # 24-36 attacks (competitive with SAST)
+    blue_win_rate: [0.30, 0.50]  # 9-18 blocks (novel capability)
+    balance_score: 0.85  # Close competition
+    learning_improvement: 0.10  # 10% improvement first 20 vs last 20 rounds
