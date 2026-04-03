@@ -306,6 +306,31 @@ class WebhookHandler:
             return {"status": "unreachable"}
 """,
         },
+        'deserialization': {
+            'low': 'import pickle\ndef load_data(data):\n    return pickle.loads(data)',
+            'medium': 'import pickle\nclass DataLoader:\n    def load(self, data):\n        return pickle.loads(data)',
+            'high': 'import pickle\nclass AppState:\n    def restore(self, path):\n        with open(path, "rb") as f:\n            return pickle.load(f)'
+        },
+        'nosql_injection': {
+            'low': 'def find_user(db, query):\n    return db.users.find_one(query)',
+            'medium': 'class UserDB:\n    def get(self, db, u, p):\n        return db.find_one({"u": u, "p": p})',
+            'high': 'class Auth:\n    def login(self, db, data):\n        return db.users.find_one({"username": data["u"], "password": data["p"]})'
+        },
+        'ssti': {
+            'low': 'from flask import render_template_string\ndef render(name):\n    return render_template_string("Hello " + name)',
+            'medium': 'from flask import render_template_string, request\ndef view():\n    return render_template_string("User: " + request.args.get("u"))',
+            'high': 'from jinja2 import Template\nclass View:\n    def render(self, tpl, **kwargs):\n        return Template(tpl).render(**kwargs)'
+        },
+        'idor': {
+            'low': 'def get_user_profile(db, user_id):\n    return db.get_profile(user_id)',
+            'medium': 'class API:\n    def get_doc(self, db, doc_id):\n        return db.documents.get(doc_id)',
+            'high': 'class FileStore:\n    def download(self, request):\n        file_id = request.GET.get("id")\n        return File.objects.get(id=file_id)'
+        },
+        'open_redirect': {
+            'low': 'from flask import redirect, request\ndef login():\n    return redirect(request.args.get("next"))',
+            'medium': 'from flask import redirect\nclass Auth:\n    def redirect_user(self, target):\n        return redirect(target)',
+            'high': 'class RouteHelper:\n    def go_to(self, url):\n        return redirect(url)'
+        }
     }
     
     # Secure versions
@@ -390,6 +415,21 @@ def fetch_url(url):
     return response.text
 """,
         },
+        'deserialization': {
+            'low': "import json\ndef load_data(data):\n    return json.loads(data)",
+        },
+        'nosql_injection': {
+            'low': "def find_user(db, query):\n    username = str(query.get('username', ''))\n    return db.users.find_one({'username': username})",
+        },
+        'ssti': {
+            'low': "from flask import render_template_string\ndef render(name):\n    return render_template_string('Hello {{ name }}', name=name)",
+        },
+        'idor': {
+            'low': "def get_user_profile(db, user_id, current_user):\n    if str(user_id) != str(current_user.id) and current_user.role != 'admin':\n        raise PermissionError('Access denied')\n    return db.get_profile(user_id)",
+        },
+        'open_redirect': {
+            'low': "from flask import redirect, request\nfrom urllib.parse import urlparse, urljoin\ndef login():\n    target = request.args.get('next', '/')\n    if not urlparse(target).netloc:\n        return redirect(target)\n    return redirect('/')",
+        },
     }
     
     # Test code templates
@@ -428,6 +468,11 @@ def test_ping_localhost():
             'path_traversal': 'CWE-22',
             'xxe': 'CWE-611',
             'ssrf': 'CWE-918',
+            'deserialization': 'CWE-502',
+            'nosql_injection': 'CWE-943',
+            'ssti': 'CWE-1336',
+            'idor': 'CWE-639',
+            'open_redirect': 'CWE-601',
         }
     
     def generate_dataset(
@@ -451,8 +496,13 @@ def test_ping_localhost():
                 'xss': 0.20,
                 'command_injection': 0.20,
                 'path_traversal': 0.15,
-                'xxe': 0.10,
-                'ssrf': 0.10,
+                'xxe': 0.05,
+                'ssrf': 0.05,
+                'deserialization': 0.10,
+                'nosql_injection': 0.10,
+                'ssti': 0.05,
+                'idor': 0.10,
+                'open_redirect': 0.05,
             }
         
         dataset = []
@@ -507,6 +557,11 @@ def test_ping_localhost():
             'path_traversal': 'Unsanitized file path allows directory traversal',
             'xxe': 'XML parser allows external entity processing',
             'ssrf': 'User-controlled URL allows server-side request forgery',
+            'deserialization': 'Insecure deserialization of untrusted data',
+            'nosql_injection': 'Unsanitized input in NoSQL query',
+            'ssti': 'Server-side template injection',
+            'idor': 'Insecure direct object reference',
+            'open_redirect': 'Unvalidated redirect to external site',
         }
         return descriptions.get(vuln_type, 'Security vulnerability')
     
@@ -521,11 +576,20 @@ def test_ping_localhost():
         logger.info(f"Saved dataset to {output_path}")
     
     def load_dataset(self, input_path: str) -> List[VulnerableCodeSample]:
-        """Load dataset from JSON file."""
+        """Load dataset from JSON file. Compatible with both synthetic and real-world datasets."""
         with open(input_path, 'r') as f:
             data = json.load(f)
         
-        dataset = [VulnerableCodeSample(**sample) for sample in data]
+        # Get valid field names from the dataclass
+        import dataclasses
+        valid_fields = {field.name for field in dataclasses.fields(VulnerableCodeSample)}
+        
+        dataset = []
+        for sample in data:
+            # Filter out any extra keys not in VulnerableCodeSample
+            filtered = {k: v for k, v in sample.items() if k in valid_fields}
+            dataset.append(VulnerableCodeSample(**filtered))
+        
         logger.info(f"Loaded {len(dataset)} samples from {input_path}")
         return dataset
 

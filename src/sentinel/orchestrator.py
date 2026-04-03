@@ -19,6 +19,9 @@ from .agents.blue_agent import BlueAgent
 from .agents.base_agent import RewardCalculator
 from .sandbox.executor import SandboxExecutor, ExecutionResult
 from .data.synthetic import SyntheticDatasetGenerator, VulnerableCodeSample
+from .rag.knowledge_base import RAGRetriever
+from .analysis.static_analyzer import StaticAnalyzer
+from .evaluation.metrics import MetricsTracker
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +57,15 @@ class AdversarialOrchestrator:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
+        # Initialize RAG and Static Analyzer
+        logger.info("Initializing Intelligence and Analysis components...")
+        self.rag = RAGRetriever()
+        self.static_analyzer = StaticAnalyzer()
+
         # Initialize agents
         logger.info("Initializing agents...")
-        self.red_agent = RedAgent(self.config)
-        self.blue_agent = BlueAgent(self.config)
+        self.red_agent = RedAgent(self.config, rag_retriever=self.rag)
+        self.blue_agent = BlueAgent(self.config, rag_retriever=self.rag)
         
         # Initialize sandbox
         logger.info("Initializing sandbox...")
@@ -65,6 +73,7 @@ class AdversarialOrchestrator:
         
         # Initialize reward calculator
         self.reward_calc = RewardCalculator()
+        self.metrics_tracker = MetricsTracker()
         
         # Training configuration
         self.training_config = self.config.get('training', {})
@@ -192,6 +201,7 @@ class AdversarialOrchestrator:
     
     def _sample_code(self) -> VulnerableCodeSample:
         """Sample a code sample from the dataset."""
+        import random
         # Curriculum learning: start with easy, progress to hard
         if self.training_config.get('curriculum_learning', False):
             curriculum = self.training_config.get('curriculum', [])
@@ -210,12 +220,10 @@ class AdversarialOrchestrator:
                 # Filter dataset by complexity
                 filtered = [s for s in self.dataset if s.complexity == complexity]
                 if filtered:
-                    return filtered[self.current_sample_idx % len(filtered)]
+                    return random.choice(filtered)
         
         # Default: random sampling
-        sample = self.dataset[self.current_sample_idx % len(self.dataset)]
-        self.current_sample_idx += 1
-        return sample
+        return random.choice(self.dataset)
     
     def _red_agent_attack(self, sample: VulnerableCodeSample) -> Dict[str, Any]:
         """
@@ -240,7 +248,7 @@ class AdversarialOrchestrator:
         try:
             attack_data = json.loads(agent_response.content)
             payload = attack_data.get('payload', '')
-        except:
+        except (json.JSONDecodeError, ValueError, KeyError):
             payload = agent_response.content
         
         # Execute attack in sandbox with vulnerability type
@@ -255,6 +263,7 @@ class AdversarialOrchestrator:
             'attack_success': exec_result.attack_succeeded or exec_result.vulnerability_triggered,
             'payload': payload,
             'attack_type': sample.vulnerability_type,
+            'vulnerable_code': sample.code,
             'execution_result': exec_result,
             'agent_response': agent_response,
         }
@@ -356,8 +365,12 @@ class AdversarialOrchestrator:
         recent_attacks = [m.vulnerability_type for m in self.metrics[-10:]]
         is_novel = attack_result['attack_type'] not in recent_attacks
         
-        # Check if caught by static analysis (simplified)
-        caught_by_static = False  # TODO: integrate Bandit/Semgrep
+        # Check if caught by static analysis — analyze the vulnerable CODE, not the payload
+        vulnerable_code = attack_result.get('vulnerable_code', '')
+        caught_by_static = self.static_analyzer.is_caught_by_static(
+            vulnerable_code, 
+            attack_result['attack_type']
+        )
         
         # Was the attack bypassed by Blue Agent?
         bypassed_patch = False

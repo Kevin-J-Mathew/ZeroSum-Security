@@ -2,11 +2,13 @@
 src/sentinel/agents/base_agent.py
 
 Base class for Red and Blue agents.
-UPDATED: Uses Groq (Fast & High Rate Limits).
+UPDATED: Uses Groq (Fast & High Rate Limits), with Azure/OpenAI fallbacks, caching, and memory.
 """
 
 import os
 import time
+import json
+import hashlib
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
@@ -35,21 +37,20 @@ class BaseLLMAgent(ABC):
         self.llm_config = config.get('llm', {})
         self.provider = self.llm_config.get('provider', 'groq') # Default to groq
         
-        # --- GROQ SETUP ---
+        # --- CLIENT SETUP ---
         if self.provider == 'groq':
             api_key = os.getenv('GROQ_API_KEY')
             if not api_key:
                 raise ValueError("GROQ_API_KEY not found in .env")
-            
-            # Groq uses the OpenAI client format
             self.client = OpenAI(
                 base_url="https://api.groq.com/openai/v1",
                 api_key=api_key
             )
-            # Use Llama 3.3 70B (Fast & Smart)
             self.model_name = self.llm_config.get('model', 'llama-3.3-70b-versatile')
-        # ------------------
-        
+        elif self.provider == 'openai':
+            api_key = os.getenv('OPENAI_API_KEY')
+            self.client = OpenAI(api_key=api_key)
+            self.model_name = self.llm_config.get('model', 'gpt-4o-mini')
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
         
@@ -58,17 +59,29 @@ class BaseLLMAgent(ABC):
         self.agent_config = self._get_agent_config()
         self.action_history: List[Dict[str, Any]] = []
         
+        # Caching and memory
+        self._cache = {}
+        self.success_memory: List[Dict[str, Any]] = []
+        
         logger.info(f"Initialized {self.__class__.__name__} with {self.provider}/{self.model_name}")
     
     @abstractmethod
     def _get_agent_config(self) -> Dict[str, Any]:
         pass
+
+    def _get_cache_key(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        combined = f"{system_prompt or ''}|{prompt}"
+        return hashlib.md5(combined.encode()).hexdigest()
     
-    # Retry logic is still good, but Groq is usually stable
     @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def _call_llm(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        # Tiny sleep just to be safe, but Groq is fast!
-        time.sleep(1) 
+    def _call_llm(self, prompt: str, system_prompt: Optional[str] = None, use_cache: bool = True) -> str:
+        if use_cache:
+            cache_key = self._get_cache_key(prompt, system_prompt)
+            if cache_key in self._cache:
+                logger.debug("LLM Cache hit")
+                return self._cache[cache_key]
+
+        time.sleep(1)
 
         try:
             messages = []
@@ -82,7 +95,11 @@ class BaseLLMAgent(ABC):
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
-            return response.choices[0].message.content
+            
+            result = response.choices[0].message.content
+            if use_cache:
+                self._cache[cache_key] = result
+            return result
                 
         except Exception as e:
             logger.error(f"LLM API call failed: {e}")
@@ -104,8 +121,40 @@ class BaseLLMAgent(ABC):
         pass
     
     def update_policy(self, reward: float, info: Dict[str, Any]) -> None:
+        """Update policy: store successful outcomes in memory."""
         logger.info(f"{self.__class__.__name__} received reward: {reward}")
         self.add_to_history({'reward': reward, 'info': info})
+        
+        # Simple policy learning: keep track of high reward actions
+        if reward > 5.0:
+            memory = {
+                'reward': reward,
+                'info': info,
+                'timestamp': time.time()
+            }
+            self.success_memory.append(memory)
+            # Keep top 50 successes
+            self.success_memory = sorted(self.success_memory, key=lambda x: x['reward'], reverse=True)[:50]
+
+    def get_memory_context(self, vuln_type: str, n: int = 3) -> str:
+        """Format past successes for prompt injection."""
+        relevant = [m for m in self.success_memory if m.get('info', {}).get('vulnerability_type', m.get('info', {}).get('attack_type')) == vuln_type]
+        if not relevant:
+            return ""
+        
+        context = ["\n=== PAST SUCCESSFUL EXPERIENCES ==="]
+        for idx, mem in enumerate(relevant[:n]):
+            context.append(f"\n--- Success {idx+1} (Reward: {mem['reward']}) ---")
+            info = mem['info']
+            if 'payload' in info: # Red Agent
+                context.append(f"Payload: {info['payload']}")
+                if 'target_function' in info:
+                    context.append(f"Target: {info['target_function']}")
+            elif 'patch_valid' in info: # Blue Agent
+                context.append(f"Validation secure: {info.get('validation', {}).get('likely_secure', 'Unknown')}")
+                context.append(f"Code Snippet:\n{info.get('patched_code', '')[:200]}...")
+        context.append("\n===================================")
+        return "\n".join(context)
 
 
 class RewardCalculator:

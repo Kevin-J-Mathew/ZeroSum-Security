@@ -36,7 +36,7 @@ class BlueAgent(BaseLLMAgent):
         """Get Blue Agent specific configuration."""
         return self.config.get('agents', {}).get('blue_agent', {})
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], rag_retriever=None):
         """Initialize Blue Agent."""
         super().__init__(config)
         
@@ -48,6 +48,7 @@ class BlueAgent(BaseLLMAgent):
         ])
         
         self.max_patch_lines = self.agent_config.get('max_patch_lines', 50)
+        self.rag = rag_retriever
         self.test_required = self.agent_config.get('test_required', True)
         
         # Secure coding patterns
@@ -176,6 +177,15 @@ Recommended Approach:
 - Example: {secure_info.get('example_python', 'N/A')}
 - Libraries: {', '.join(secure_info.get('libraries', []))}
 """
+        
+        # Get memory context
+        memory_context = self.get_memory_context(vuln_type, n=3)
+        
+        # Get RAG context
+        rag_context = ""
+        if hasattr(self, 'rag') and self.rag:
+            attack_payload = attack.get('payload') if attack else None
+            rag_context = self.rag.get_defense_context(code, vuln_type, attack_payload)
 
         user_prompt = f"""Fix this security vulnerability in {language} code:
 
@@ -189,6 +199,8 @@ VULNERABILITY TYPE: {vuln_type}
 {attack_info}
 
 {secure_pattern_info}
+{rag_context}
+{memory_context}
 
 REQUIREMENTS:
 1. Fix the {vuln_type} vulnerability completely

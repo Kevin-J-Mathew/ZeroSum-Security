@@ -20,6 +20,11 @@ agents:
       - path_traversal
       - xxe
       - ssrf
+      - deserialization
+      - nosql_injection
+      - ssti
+      - idor
+      - open_redirect
     max_payload_length: 1000
     mutation_rate: 0.3
     diversity_bonus: 5.0
@@ -55,12 +60,17 @@ dataset:
   synthetic:
     num_samples: 100
     vulnerability_distribution:
-      sql_injection: 0.25
-      xss: 0.20
-      command_injection: 0.20
-      path_traversal: 0.15
-      xxe: 0.10
-      ssrf: 0.10
+      sql_injection: 0.15
+      xss: 0.15
+      command_injection: 0.15
+      path_traversal: 0.10
+      xxe: 0.05
+      ssrf: 0.05
+      deserialization: 0.10
+      nosql_injection: 0.10
+      ssti: 0.05
+      idor: 0.05
+      open_redirect: 0.05
     languages:
       - python
     complexity_levels:

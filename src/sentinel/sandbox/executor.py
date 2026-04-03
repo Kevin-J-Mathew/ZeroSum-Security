@@ -98,6 +98,9 @@ RUN apt-get update && apt-get install -y \\
     sqlite3 \\
     && rm -rf /var/lib/apt/lists/*
 
+# Install python dependencies required by the vulnerable code templates
+RUN pip install flask requests lxml markupsafe pytest sqlalchemy psycopg2-binary
+
 # Create non-root user for security
 RUN useradd -m -s /bin/bash -u 1000 sandbox
 
@@ -302,9 +305,12 @@ CMD ["python", "target.py"]
             except ContainerError as e:
                 # Container exited with error
                 execution_time = time.time() - start_time
-                stdout = e.stdout.decode('utf-8') if e.stdout else ''
-                stderr = e.stderr.decode('utf-8') if e.stderr else ''
-                exit_code = e.exit_status
+                stdout_bytes = getattr(e, 'stdout', getattr(e, 'stderr', b''))
+                stderr_bytes = getattr(e, 'stderr', getattr(e, 'stdout', b''))
+                
+                stdout = stdout_bytes.decode('utf-8') if isinstance(stdout_bytes, bytes) else str(stdout_bytes)
+                stderr = stderr_bytes.decode('utf-8') if isinstance(stderr_bytes, bytes) else str(stderr_bytes)
+                exit_code = getattr(e, 'exit_status', -1)
                 
                 logger.debug(f"Container exited with code {exit_code}")
             

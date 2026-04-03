@@ -1,0 +1,46 @@
+[
+  {
+    "content": "SQL Injection - Parameterized Queries / Prepared Statements:\nThe most effective defense against SQL injection is using parameterized queries. This ensures the database treats user input as data, not as executable code.\n\nPython sqlite3:\ncursor.execute(\"SELECT * FROM users WHERE username=? AND password=?\", (username, password))\n\nPython psycopg2:\ncursor.execute(\"SELECT * FROM users WHERE username=%s AND password=%s\", (username, password))\n\nSQLAlchemy ORM (Automated Parametrization):\nsession.query(User).filter(User.username == username, User.password == password).all()\n\nRule: Never use f-strings, string concatenation (+), or string formatting (.format()) to build SQL queries with user input.",
+    "metadata": {"vulnerability_type": "sql_injection", "technique": "parameterization", "source": "OWASP"}
+  },
+  {
+    "content": "XSS - Output Encoding and Auto-Escaping:\nPrevent XSS by ensuring ALL user-supplied data is safely encoded before rendering in an HTML context.\n\nPython Flask / Jinja2:\nJinja2 auto-escapes by default. Do not use the `|safe` filter on user input.\nUse `render_template()` instead of `render_template_string()`.\nIf manual escaping is needed: `from markupsafe import escape; safe_html = escape(user_input)`\n\nWhen inserting data into <script> context, HTML encoding is not enough. Serialize data securely (e.g., as JSON) and use innerText instead of innerHTML in JS.",
+    "metadata": {"vulnerability_type": "xss", "technique": "contextual_encoding", "source": "OWASP"}
+  },
+  {
+    "content": "Command Injection - Safe Execution Practices:\nAvoid passing user input to OS commands. If unavoidable, use safe APIs that do not invoke a shell.\n\nDangerous:\nos.system(f\"ping -c 4 {hostname}\")\nos.popen(cmd)\nsubprocess.run(cmd, shell=True)\n\nSafe (Python `subprocess` without shell=True):\nsubprocess.run([\"ping\", \"-c\", \"4\", hostname], check=True)\n\nWhen using lists, arguments are passed directly to the executable, avoiding shell interpreting metacharacters like `;`, `|`, `&&`. Also validate input against an allowlist if possible (e.g., alphanumeric only).",
+    "metadata": {"vulnerability_type": "command_injection", "technique": "safe_api", "source": "OWASP"}
+  },
+  {
+    "content": "Path Traversal - Canonicalization and Strict Validation:\nPrevent attackers from reading arbitrary files by resolving the absolute path and validating it against the intended base directory.\n\nPython Secure File Read:\nimport os\n\ndef read_safe(filename):\n    base_dir = os.path.abspath(\"/var/www/uploads\")\n    # Resolve the requested path\n    filepath = os.path.abspath(os.path.join(base_dir, filename))\n    # Ensure it starts with the base directory\n    if not filepath.startswith(base_dir):\n        raise ValueError(\"Path traversal detected!\")\n    with open(filepath, 'r') as f:\n        return f.read()\n\nAdditionally: reject filenames containing `..` or `/`.",
+    "metadata": {"vulnerability_type": "path_traversal", "technique": "canonicalization", "source": "OWASP"}
+  },
+  {
+    "content": "XXE - Securing XML Parsers:\nPrevent XML External Entity injection by disabling external entity resolution and DTD processing.\n\nPython lxml:\nfrom lxml import etree\nparser = etree.XMLParser(resolve_entities=False, no_network=True)\ntree = etree.fromstring(xml_data, parser)\n\nPython xml.etree.ElementTree / xml.sax:\nThe standard library `xml` modules are vulnerable to various XML attacks. Python documentation recommends using `defusedxml`.\nimport defusedxml.ElementTree as ET\ntree = ET.fromstring(xml_data)\n\nGeneral Rule: Disable DTDs completely if possible.",
+    "metadata": {"vulnerability_type": "xxe", "technique": "disable_entities", "source": "OWASP"}
+  },
+  {
+    "content": "SSRF - Strict URL Validation and Allowlisting:\nPrevent Server-Side Request Forgery by enforcing strict validation on URLs before making HTTP requests.\n\nDefense in Depth:\n1. Parse the URL using `urllib.parse.urlparse`.\n2. Extract the hostname.\n3. Resolve the hostname to an IP address.\n4. Check the IP against a list of private/internal ranges (e.g., 10.0.0.0/8, 127.0.0.0/8, 169.254.169.254).\n5. Alternatively, just use a strict allowlist of permitted domains.\n\nExample Allowlist:\nallowed_domains = ['api.example.com']\nparsed = urlparse(url)\nif parsed.netloc not in allowed_domains:\n    raise ValueError(\"Untrusted domain\")\nrequests.get(url, timeout=5)",
+    "metadata": {"vulnerability_type": "ssrf", "technique": "url_allowlisting", "source": "OWASP"}
+  },
+  {
+    "content": "Insecure Deserialization - Safe Data Formats:\nDo not deserialize untrusted data using vulnerable formats like Python's `pickle`, `marshal`, or `shelve`.\n\nMitigation:\n1. Use safe formats: `json`, `yaml.safe_load()`, `msgpack`.\n2. If complex objects are needed, validate the structure strictly before processing.\n\nDangerous:\nimport pickle\npickle.loads(user_input)\n\nSafe:\nimport json\njson.loads(user_input)",
+    "metadata": {"vulnerability_type": "deserialization", "technique": "safe_formats", "source": "OWASP"}
+  },
+  {
+    "content": "NoSQL Injection - Type Checking and Safe Query Building:\nPrevent NoSQL injection (e.g., MongoDB) by ensuring user input is strictly typed and avoiding operators in input values.\n\nDangerous (Python pymongo, if using untrusted dicts/JSON):\ncollection.find_one({'username': request.json['username']})\n# Attack: {\"username\": {\"$gt\": \"\"}}\n\nSafe:\nEnsure input is a string:\nusername = str(request.json.get('username', ''))\ncollection.find_one({'username': username})\n\nNever use concatenation or interpolation to build NoSQL queries, and strictly validate data types.",
+    "metadata": {"vulnerability_type": "nosql_injection", "technique": "type_checking", "source": "OWASP"}
+  },
+  {
+    "content": "SSTI - Server-Side Template Injection Prevention:\nNever pass user input directly into template compilation functions. Pass input as context variables.\n\nDangerous (Flask/Jinja2):\nfrom flask import render_template_string\ntemplate = f\"<h1>Hello {user_input}</h1>\"\nreturn render_template_string(template)\n\nSafe:\nfrom flask import render_template_string\ntemplate = \"<h1>Hello {{ name }}</h1>\"\nreturn render_template_string(template, name=user_input)\n\nBetter: use pre-compiled `.html` template files with `render_template('template.html', name=user_input)`",
+    "metadata": {"vulnerability_type": "ssti", "technique": "context_variables", "source": "OWASP"}
+  },
+  {
+    "content": "IDOR - Access Control Checks:\nPrevent Insecure Direct Object Reference by validating authorization on every resource access.\n\nDangerous:\n@app.route('/api/user/<int:user_id>')\ndef get_user(user_id):\n    # Returns any user's profile blindly\n    return db.query(User).get(user_id)\n\nSafe:\n@app.route('/api/user/<int:user_id>')\ndef get_user(user_id):\n    user = db.query(User).get(user_id)\n    # Check if current logged-in user has permission to view this profile\n    if current_user.id != user_id and current_user.role != 'admin':\n        abort(403)\n    return user\n\nAlso consider using unguessable identifiers (UUIDv4) instead of sequential integers.",
+    "metadata": {"vulnerability_type": "idor", "technique": "authorization_checks", "source": "OWASP"}
+  },
+  {
+    "content": "Open Redirect - Validation and Allowlisting:\nPrevent arbitrary redirection to attacker-controlled sites.\n\nDangerous:\nredirect_url = request.args.get('next')\nreturn redirect(redirect_url)\n\nSafe:\n1. If possible, map destinations to keys (e.g., `?next=login` -> `/login`).\n2. Validate the URL is relative, or enforce an allowlist of domains.\n\nfrom urllib.parse import urlparse, urljoin\ndef is_safe_url(target):\n    ref_url = urlparse(request.host_url)\n    test_url = urlparse(urljoin(request.host_url, target))\n    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc\n\nredirect_url = request.args.get('next')\nif not is_safe_url(redirect_url):\n    return redirect('/')\nreturn redirect(redirect_url)",
+    "metadata": {"vulnerability_type": "open_redirect", "technique": "url_validation", "source": "OWASP"}
+  }
+]

